@@ -7,7 +7,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         docs_url="/documentation",
         openapi_url="/openapi.json",
-        title="user-management-micro-service",
+        title="Container Management Systems",
         description="description",
         version="1.0.0",
     )
