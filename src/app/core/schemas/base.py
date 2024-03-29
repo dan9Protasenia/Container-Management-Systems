@@ -10,4 +10,3 @@ class BaseConfig:
 class CommonBaseModel(BaseModel):
     class Config(BaseConfig):
         pass
-    
