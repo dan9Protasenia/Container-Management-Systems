@@ -99,3 +99,19 @@ class ContainerService:
             raise DockerImageNotFoundError(f"Container {container_id} not found.")
         except APIError as e:
             raise DockerInternalError(f"Failed to get logs for container {container_id}: {e.explanation}")
+
+    @staticmethod
+    def get_containers_count() -> int:
+        containers = client.containers.list(all=True)
+        return len(containers)
+
+    @staticmethod
+    def get_containers_count_by_image(image_name: str):
+        containers = client.containers.list(all=True)
+        filtered_containers = [c for c in containers if c.attrs["Config"]["Image"] == image_name]
+        return len(filtered_containers)
+
+    @staticmethod
+    def get_containers_by_image(image_name: str):
+        containers = client.containers.list(all=True)
+        return [c for c in containers if c.attrs["Config"]["Image"] == image_name]
