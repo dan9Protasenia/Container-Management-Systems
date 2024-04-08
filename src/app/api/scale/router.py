@@ -1,6 +1,6 @@
 from fastapi import APIRouter, status
 
-from .views import get_containers_count_by_image, scale_container, load_balance
+from .views import get_containers_count_by_image, scale_container, scale, proxy_request
 
 router = APIRouter()
 
@@ -22,9 +22,16 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    path="/balance",
-    endpoint=load_balance,
+    path="/scale",
+    endpoint=scale,
     methods=["POST"],
     status_code=status.HTTP_200_OK,
 
+)
+
+router.add_api_route(
+    path="/proxy/{path:path}",
+    endpoint=proxy_request,
+    methods=["GET"],
+    status_code=status.HTTP_200_OK,
 )
