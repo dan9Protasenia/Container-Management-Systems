@@ -14,7 +14,9 @@ class ContainerCreate(ContainerBase):
 
 class Container(ContainerBase):
     id: str
+    image: str
     status: str
+    url: str
 
 
 class ServiceScale(CommonBaseModel):
@@ -29,3 +31,8 @@ class LogEntry(CommonBaseModel):
 
 class ContainerLog(CommonBaseModel):
     logs: list[LogEntry]
+
+
+class ScaleRequest(CommonBaseModel):
+    container_id: str
+    scale_target: int
