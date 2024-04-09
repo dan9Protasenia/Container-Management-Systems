@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-
+from pydantic import Field
 from src.app.core.schemas.base import CommonBaseModel
 
 
@@ -17,6 +17,7 @@ class Container(ContainerBase):
     image: str
     status: str
     url: str
+    labels: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class ServiceScale(CommonBaseModel):
