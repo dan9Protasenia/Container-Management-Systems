@@ -1,4 +1,7 @@
+import datetime
 import re
+import threading
+import time
 
 import docker
 from docker.errors import APIError, ImageNotFound, NotFound
@@ -18,22 +21,19 @@ class ContainerService:
 
         for container in containers:
             ports = container.attrs['NetworkSettings']['Ports']
-            port_data = ports.get('80/tcp')
-
-            if port_data:
-                print(f' infa pro port_data{port_data}')
-                host_port = port_data[0]['HostPort']
-                url = f"http://localhost:{host_port}"
-
-            else:
-                print("Порт 80/tcp недоступен для этого контейнера.")
-                url = "http://localhost"
+            url = "http://localhost"
+            labels = container.labels
+            for port, port_data in ports.items():
+                if port_data:
+                    host_port = port_data[0]['HostPort']
+                    url = f"http://localhost:{host_port}"
 
             container_data = ContainerSchema(
                 id=container.id,
                 image=container.image.tags[0] if container.image.tags else "unknown",
                 status=container.status,
-                url=url
+                url=url,
+                labels=labels
             )
             containers_data.append(container_data)
 
@@ -162,3 +162,44 @@ class ContainerService:
         containers = client.containers.list(all=True)
 
         return [c for c in containers if c.attrs["Config"]["Image"] == image_name]
+
+    @staticmethod
+    def restart_failed_containers():
+        while True:
+            containers = client.containers.list(all=True)
+            for container in containers:
+                try:
+                    container.reload()
+                    state = container.attrs['State']
+                    status = state['Status']
+                    exit_code = state.get('ExitCode', 0)
+                    created_at = datetime.datetime.strptime(container.attrs['Created'][:-4],
+                                                            "%Y-%m-%dT%H:%M:%S.%f").replace(
+                        tzinfo=datetime.timezone.utc)
+
+                    if (datetime.datetime.now(datetime.timezone.utc) - created_at).total_seconds() < 500:  # 5 минут
+                        print(f'Контейнер {container.id} был недавно создан, пропускаем...')
+                        continue
+
+                    print(f'Контейнер {container.id} в состояни его код {exit_code}')
+                    if status == 'exited' and exit_code != 0:
+                        print(f'Контейнер {container.id} завершился с ошибкой, перезапускаем...')
+                        container.restart()
+                        print(f'Контейнер {container.id} успешно перезапущен.')
+                    else:
+                        print(f'Контейнер {container.id} в состоянии {status}, пропускаем.')
+                        print(f'код ошибки контейнера {exit_code}')
+                except APIError as e:
+                    print(f'Ошибка при обработке контейнера {container.id}: {e.explanation}')
+                except Exception as e:
+                    print(f'Неожиданная ошибка при обработке контейнера {container.id}: {str(e)}')
+            time.sleep(60)
+
+
+def start_health_check_loop():
+    print("Стартовка цикла проверки состояния контей")
+    health_check_thread = threading.Thread(target=ContainerService.restart_failed_containers, daemon=True)
+    health_check_thread.start()
+
+
+start_health_check_loop()
