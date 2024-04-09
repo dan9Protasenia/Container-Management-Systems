@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+import json
 
 import httpx
 from threading import Thread
@@ -34,12 +36,13 @@ class LoadBalancer:
         asyncio.create_task(self.check_and_scale())
 
     @staticmethod
-    async def create_container(image: str, command: str = None):
+    async def create_container(image: str, command: str = None, labels: dict = None):
         try:
             image = await asyncio.get_running_loop().run_in_executor(None, lambda: client.images.get(image) if client.images.list(image) else client.images.pull(image))
             container = await asyncio.get_running_loop().run_in_executor(None, lambda: client.containers.create(
                 image=image.tags[0],
                 command=command,
+                labels=labels,
                 detach=True,
                 ports={'80/tcp': None}
             ))
@@ -129,11 +132,41 @@ class LoadBalancer:
     async def scale_up(self):
         print(f"Масштабирование вверх")
         config = DEFAULT_CONTAINER_CONFIG
-        await self.create_container(image=config['image'], command=config.get('command'))
+        labels = {"scale-purpose": "scale-up"}
+        await self.create_container(image=config['image'], command=config.get('command'), labels=labels)
 
     async def scale_down(self):
-        print(f"Масштабирование вниз")
-        await self.scale_down_func()
+        current_containers = self.list_active_containers()
+
+        if len(current_containers) <= self.initial_containers_count:
+            return
+
+        containers_to_remove = []
+
+        for container in current_containers:
+            docker_container = client.containers.get(container.id)
+            created_at_str = docker_container.attrs['Created']
+            created_at = datetime.datetime.strptime(created_at_str[:-4], "%Y-%m-%dT%H:%M:%S.%f").replace(
+                tzinfo=datetime.timezone.utc)
+            print(f"Контейнер {docker_container.short_id}: время создания {created_at}")
+
+            container_label_value = docker_container.attrs['Config']['Labels'].get('scale-purpose', None)
+
+            if container_label_value == "scale-up":
+                print(f"Контейнер {docker_container.short_id} помечен для удаления.")
+                containers_to_remove.append(docker_container)
+
+            else:
+                print(f"Контейнер {docker_container.short_id} не подходит для удаления.")
+
+        for docker_container in containers_to_remove:
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: docker_container.remove(force=True))
+                print(f"Контейнер {docker_container.short_id} успешно удален.")
+            except APIError as e:
+                print(f"Ошибка при удалении контейнера {docker_container.short_id}: {e}")
+
+        self.update_containers_list()
 
     async def get_average_cpu_load(self):
         total_cpu_load = 0
@@ -143,54 +176,55 @@ class LoadBalancer:
         if not active_containers:
             return 0
 
+        valid_counts = 0
+
         for container in active_containers:
-            print(f'стадия - 2')
             cpu_load = await self.get_cpu_load(container)
-            print(f'стадия - 3')
-            total_cpu_load += cpu_load
-        average_cpu_load = total_cpu_load / len(active_containers)
-        print(f'че-то попадает сюда ????')
+            if cpu_load is not None:
+                total_cpu_load += cpu_load
+                valid_counts += 1
+
+        if valid_counts == 0:
+            return 0
+
+        average_cpu_load = total_cpu_load / valid_counts
 
         return average_cpu_load
 
-    async def scale_down_func(self):
-        current_containers = self.list_active_containers()
-
-        if len(current_containers) <= self.initial_containers_count:
-            print("Масштабирование вниз не требуется.")
-
-            return
-
-        containers_to_remove = current_containers[self.initial_containers_count:]
-
-        for container in containers_to_remove:
-            docker_container = client.containers.get(container.id)
-            try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: docker_container.remove(force=True))
-                print(f"Контейнер {docker_container.short_id} удален.")
-
-            except APIError as e:
-                print(f"Ошибка при удалении контейнера {docker_container.short_id}: {e}")
-
-        self.update_containers_list()
-
     @staticmethod
     async def get_cpu_load(container_id):
-        container = client.containers.get(container_id)
-        stats = container.stats(stream=False)
+        try:
+            container = client.containers.get(container_id)
+            stats = container.stats(stream=False)
 
-        cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - \
-                    stats["precpu_stats"]["cpu_usage"]["total_usage"]
+            if not stats:
+                return None
 
-        system_cpu_delta = stats["cpu_stats"]["system_cpu_usage"] - \
-                           stats["precpu_stats"]["system_cpu_usage"]
+            cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - \
+                        stats["precpu_stats"]["cpu_usage"]["total_usage"]
 
-        number_cpus = stats["cpu_stats"]["online_cpus"]
+            system_cpu_delta = stats["cpu_stats"]["system_cpu_usage"] - \
+                               stats["precpu_stats"]["system_cpu_usage"]
 
-        cpu_usage_percentage = (cpu_delta / system_cpu_delta) * number_cpus * 100.0
+            if system_cpu_delta == 0:
+                print(f"Данные о загрузке CPU для контейнера {container_id} не доступны для анализа.")
+                return None
 
-        return cpu_usage_percentage
+            number_cpus = stats["cpu_stats"]["online_cpus"]
+
+            cpu_usage_percentage = (cpu_delta / system_cpu_delta) * number_cpus * 100.0
+
+            return cpu_usage_percentage
+
+        except json.decoder.JSONDecodeError:
+            print(f"Ошибка при декодировании ответа от API для контейнера {container_id}.")
+            return None
+        except KeyError as e:
+            print(f"Отсутствует ожидаемое поле в ответе от API для контейнера {container_id}: {e}")
+            return None
+        except Exception as e:
+            print(f"Неизвестная ошибка при получении статистики для контейнера {container_id}: {str(e)}")
+            return None
 
     @staticmethod
     def list_active_containers():
@@ -200,12 +234,14 @@ class LoadBalancer:
         for docker_container in docker_containers:
             port_data = docker_container.attrs['NetworkSettings']['Ports'].get('80/tcp')
             url = f"http://localhost:{port_data[0]['HostPort']}" if port_data else "http://localhost"
+            labels = docker_container.labels
 
             containers.append(Container(
                 id=docker_container.id,
                 image=docker_container.image.tags[0] if docker_container.image.tags else "unknown",
                 status=docker_container.status,
-                url=url
+                url=url,
+                labels=labels
             ))
 
         return containers
