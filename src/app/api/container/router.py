@@ -4,7 +4,6 @@ from starlette import status
 from src.app.api.container.views import (
     create_container,
     delete_container,
-    get_container,
     get_container_logs,
     list_containers,
     start_container,
@@ -22,15 +21,6 @@ router.add_api_route(
     response_model=list[Container],
     status_code=status.HTTP_200_OK,
     description="Get a list of all containers",
-)
-
-router.add_api_route(
-    path="/containers/{container_id}",
-    endpoint=get_container,
-    methods=["GET"],
-    response_model=Container,
-    status_code=status.HTTP_200_OK,
-    description="Retrieving a container by ID",
 )
 
 router.add_api_route(
