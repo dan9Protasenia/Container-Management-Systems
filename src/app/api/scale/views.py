@@ -1,17 +1,17 @@
-from fastapi import Body, Path
-
 from src.app.api.container.service import ContainerService
 from src.app.api.scale.service import ScaleService, LoadBalancer
-from src.app.core.schemas.container import ScaleRequest
+from src.app.core.schemas.container import ScaleRequest, ScaleContainerRequest
 
 container_service = ContainerService()
 scale_service = ScaleService()
 load_service = LoadBalancer()
 
 
-async def scale_container(container_id: str = Path(...), scale_target: int = Body(...)):
-    result = scale_service.scale_container(container_id=container_id, scale_target=scale_target)
-    return {"message": "Container scaled successfully", "result": result}
+async def scale_container(request: ScaleContainerRequest):
+    print(f"Масштабирование контейнера с образом {request.image}")
+    labels = {"scale-purpose": "self-scaling"}
+    await load_service.create_container(image=request.image, labels=labels)
+    return {"message": "Container scaled successfully"}
 
 
 async def get_containers_count_by_image(image_name: str):

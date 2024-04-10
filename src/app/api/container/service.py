@@ -40,19 +40,6 @@ class ContainerService:
         return containers_data
 
     @staticmethod
-    def get_container_by_id(container_id: str) -> ContainerSchema:
-        try:
-            container = client.containers.get(container_id)
-
-            return ContainerSchema(id=container.id, image=container.attrs["Config"]["Image"], status=container.status)
-
-        except NotFound:
-            raise DockerImageNotFoundError(f"Container {container_id} not found.")
-
-        except APIError as e:
-            raise DockerInternalError(f"Failed to get container {container_id}: {e.explanation}")
-
-    @staticmethod
     def create_container(container_data: ContainerCreate) -> ContainerSchema:
         try:
             image = client.images.get(container_data.image)

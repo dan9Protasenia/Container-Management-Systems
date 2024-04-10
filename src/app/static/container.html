@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Management System</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.1/css/all.css">
+
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            loadContainers();
+            CreateContainer();
+
+
+
+
+        });
+
+        function confirmAction(action, containerId) {
+            if (confirm('Are you sure you want to ' + action + ' this container?')) {
+                if (action === 'delete') {
+                    deleteContainer(containerId);
+                } else if (action === 'stop') {
+                    stopContainer(containerId);
+                } // Add other actions if needed
+            }
+        }
+
+        async function fetchData(method, url, body = null) {
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: body ? JSON.stringify(body) : null
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        }
+
+        async function scaleContainer(imageName) {
+            if (confirm('Are you sure you want to scale this image?')) {
+                try {
+                    const response = await fetch(`/scale/${encodeURIComponent(imageName)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        // Предполагаем, что API ожидает JSON тело запроса
+                        body: JSON.stringify({ image: imageName })
+                    });
+
+                    if (response.ok) {
+                        alert('Container scaled successfully');
+                        loadContainers();
+                    } else {
+                        const errorText = await response.text();
+                        throw new Error(errorText);
+                    }
+                } catch (error) {
+                    console.error('Failed to scale container:', error);
+                    alert('Failed to scale container: ' + error.message);
+                }
+            }
+        }
+
+
+        function loadContainers() {
+            fetchData('GET', '/containers').then(containers => {
+                let containerList = $('#containerList');
+                containerList.empty();
+                containers.forEach(container => {
+                    containerList.append(`
+                        <tr>
+                            <td>${container.id.substring(0, 12)}...</td>
+                            <td>${container.image}</td>
+                            <td>${container.status}</td>
+                            <td>${container.url}</td>
+                            <td>
+                              <span class="badge ${container.status === 'running' ? 'badge-success' : 'badge-secondary'}">${container.status}</span>
+                            </td>
+                            <td>
+                            <button class="btn btn-primary" onclick="scaleContainer('${container.image}')"><i class="fas fa-plus-circle"></i> Scale</button>
+
+                                <button class="btn btn-info" onclick="getLogs('${container.id}')"><i class="fas fa-book-open"></i></button>
+                                ${container.status !== 'running' ? `<button class="btn btn-success" onclick="startContainer('${container.id}')"><i class="fas fa-play"></i></button>` : ''}
+                                ${container.status === 'running' ? `<button class="btn btn-warning" onclick="stopContainer('${container.id}')"><i class="fas fa-stop"></i></button>` : ''}
+                                <button class="btn btn-danger" onclick="deleteContainer('${container.id}')"><i class="fas fa-trash"></i></button>
+                                <button class="btn btn-secondary" onclick="location.href='metrics.html?container_id=${container.id}'"><i class="fas fa-chart-line"></i></button>
+
+
+                            </td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        async function startContainer(containerId) {
+            if (confirm('Are you sure you want to start this container?')) {
+                try {
+                    const response = await fetch(`/containers/${containerId}/start`, {
+                        method: 'POST', // или 'GET', в зависимости от того, как настроен ваш API
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        // Не нужно отправлять тело запроса для запуска контейнера, если API не требует этого
+                    });
+
+                    if (response.ok) {
+                        alert('Container started successfully');
+                        loadContainers(); // Обновить список контейнеров после запуска
+                    } else {
+                        // Обработка ответа с ошибкой от сервера
+                        const errorText = await response.text();
+                        throw new Error(errorText);
+                    }
+                } catch (error) {
+                    console.error('Failed to start container:', error);
+                    alert('Failed to start container: ' + error.message);
+                }
+            }
+        }
+
+
+        async function createContainer() {
+            const image = document.getElementById('create-image').value;
+            const command = document.getElementById('create-command').value;
+            const env = {}; // Пустой объект для переменных окружения
+
+            document.querySelectorAll('.env-variable').forEach(function(element) {
+                const key = element.querySelector('.env-key').value;
+                const value = element.querySelector('.env-value').value;
+                if (key && value) { // Добавляем только если оба поля заполнены
+                    env[key] = value;
+                }
+            });
+
+            const containerData = {
+                image: image,
+                command: command,
+                env: env // Добавляем переменные окружения
+            };
+
+            const response = await fetchData('POST', '/containers', containerData);
+
+            if (response) {
+                alert('Container created successfully');
+                loadContainers(); // Обновляем список контейнеров после создания
+            }
+        }
+
+
+        async function stopContainer(containerId) {
+            if (confirm('Are you sure you want to stop this container?')) {
+                const response = await fetchData('POST', `/containers/${containerId}/stop`);
+
+                if (response) {
+                    alert('Container stopped successfully');
+                    loadContainers();
+                }
+            }
+        }
+
+        async function deleteContainer(containerId) {
+            if (confirm('Are you sure you want to delete this container?')) {
+                const response = await fetchData('DELETE', `/containers/${containerId}`);
+
+                if (response) {
+                    alert('Container deleted successfully');
+                    loadContainers();
+                }
+            }
+        }
+
+        async function getLogs(containerId) {
+            const response = await fetchData('GET', `/containers/${containerId}/logs`);
+
+            if (response && response.logs) {
+                alert('Logs:\n' + response.logs.map(logEntry => logEntry.message).join('\n'));
+            }
+        }
+
+        function addEnvVariable() {
+            const envVariablesDiv = document.getElementById('env-variables');
+            const newVariableDiv = document.createElement('div');
+            newVariableDiv.classList.add('env-variable');
+            newVariableDiv.innerHTML = `
+                <input type="text" class="form-control env-key" placeholder="Key">
+                <input type="text" class="form-control env-value" placeholder="Value">
+                <button type="button" class="btn btn-danger" onclick="removeEnvVariable(this)">Remove</button>
+            `;
+            envVariablesDiv.appendChild(newVariableDiv);
+        }
+
+        function removeEnvVariable(button) {
+            button.closest('.env-variable').remove();
+        }
+    </script>
+</head>
+<body>
+
+<div class="container mt-5">
+    <h1 class="text-center mb-4">Container Management System</h1>
+
+    <div class="card card-body">
+        <h2>Create Container</h2>
+        <form id="createContainerForm">
+            <div class="form-group">
+                <label for="create-image">Image name</label>
+                <input type="text" class="form-control" id="create-image" placeholder="Image name" required>
+            </div>
+            <div class="form-group">
+                <label for="create-command">Command</label>
+                <input type="text" class="form-control" id="create-command" placeholder="Command">
+            </div>
+
+            <div id="env-variables">
+                <label for="env-vars">Environment Variables</label>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="addEnvVariable()">Add Env Variable</button>
+
+            <button type="button" class="btn btn-primary" onclick="createContainer()">Create</button>
+        </form>
+    </div>
+
+    <div class="card card-body mt-4">
+        <h2>List of Containers</h2>
+        <table class="table table-hover" id="containerListTable">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Image</th>
+                <th>Status</th>
+                <th>URL</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="containerList">
+
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>

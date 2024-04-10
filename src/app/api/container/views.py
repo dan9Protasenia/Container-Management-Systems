@@ -8,10 +8,6 @@ def list_containers():
     return service.list_all_containers()
 
 
-def get_container(container_id: str):
-    return service.get_container_by_id(container_id)
-
-
 def create_container(container_create: ContainerCreate):
     container = service.create_container(container_create)
     return container

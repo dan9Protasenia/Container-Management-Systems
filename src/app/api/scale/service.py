@@ -7,7 +7,7 @@ from threading import Thread
 from src.app.api.container.service import ContainerService
 from src.app.api.metrics.service import MetricsService
 from src.app.api.metrics.views import get_container_metrics
-from src.app.core.schemas.container import Container
+from src.app.core.schemas.container import Container, ScaleContainerRequest
 import docker
 
 from docker.errors import APIError, ImageNotFound, NotFound
@@ -38,7 +38,8 @@ class LoadBalancer:
     @staticmethod
     async def create_container(image: str, command: str = None, labels: dict = None):
         try:
-            image = await asyncio.get_running_loop().run_in_executor(None, lambda: client.images.get(image) if client.images.list(image) else client.images.pull(image))
+            image = await asyncio.get_running_loop().run_in_executor(None, lambda: client.images.get(
+                image) if client.images.list(image) else client.images.pull(image))
             container = await asyncio.get_running_loop().run_in_executor(None, lambda: client.containers.create(
                 image=image.tags[0],
                 command=command,
@@ -51,7 +52,7 @@ class LoadBalancer:
             container.reload()
 
             port = container.attrs['NetworkSettings']['Ports']['80/tcp'][0]['HostPort']
-            print(f"Образ {image.tags[0]} успешно заг")
+            print(f"Образ {image.tags[0]} успешно!")
 
             return Container(id=container.id, image=image.tags[0], status="running", url=f"http://localhost:{port}")
         except (ImageNotFound, NotFound) as e:
@@ -69,7 +70,6 @@ class LoadBalancer:
 
     def get_next_container(self):
         if not self.containers:
-
             return None
         return next(self.container_cycle)
 
@@ -81,11 +81,11 @@ class LoadBalancer:
 
     async def get_least_loaded_container(self):
         least_loaded = None
-        lowest_cpu_usage = float('inf')
+        lowest_cpu_usage = ('inf')
 
         for container in self.containers:
             metrics = await get_container_metrics(container.id)
-            cpu_usage = float(metrics["cpu_usage"].rstrip('%'))
+            cpu_usage = (metrics["cpu_usage"].rstrip('%'))
 
             if cpu_usage < lowest_cpu_usage or (cpu_usage == lowest_cpu_usage):
                 least_loaded = container
@@ -129,11 +129,10 @@ class LoadBalancer:
 
             await asyncio.sleep(10)
 
-    async def scale_up(self):
+    async def scale_up(self, request: ScaleContainerRequest):
         print(f"Масштабирование вверх")
-        config = DEFAULT_CONTAINER_CONFIG
         labels = {"scale-purpose": "scale-up"}
-        await self.create_container(image=config['image'], command=config.get('command'), labels=labels)
+        await self.create_container(image=request.config['image'], command=request.config.get('command'), labels=labels)
 
     async def scale_down(self):
         current_containers = self.list_active_containers()
@@ -171,7 +170,6 @@ class LoadBalancer:
     async def get_average_cpu_load(self):
         total_cpu_load = 0
         active_containers = [container.id for container in self.list_active_containers()]
-        print(f'стадия - 1')
 
         if not active_containers:
             return 0
