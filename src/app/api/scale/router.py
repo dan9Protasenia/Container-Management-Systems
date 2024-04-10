@@ -5,7 +5,7 @@ from .views import get_containers_count_by_image, scale_container, scale, proxy_
 router = APIRouter()
 
 router.add_api_route(
-    path="/containers/{container_id}/scale",
+    path="/scale/{image_name}",
     endpoint=scale_container,
     methods=["POST"],
     status_code=status.HTTP_200_OK,
