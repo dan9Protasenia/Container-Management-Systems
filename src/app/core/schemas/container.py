@@ -37,3 +37,7 @@ class ContainerLog(CommonBaseModel):
 class ScaleRequest(CommonBaseModel):
     container_id: str
     scale_target: int
+
+
+class ScaleContainerRequest(CommonBaseModel):
+    image: str
