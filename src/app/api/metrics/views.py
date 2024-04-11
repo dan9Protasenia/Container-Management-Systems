@@ -1,4 +1,5 @@
 from fastapi import Path
+
 from src.app.api.metrics.service import MetricsService
 
 

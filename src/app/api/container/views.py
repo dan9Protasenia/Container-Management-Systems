@@ -8,8 +8,8 @@ def list_containers():
     return service.list_all_containers()
 
 
-def create_container(container_create: ContainerCreate):
-    container = service.create_container(container_create)
+async def create_container(container_create: ContainerCreate):
+    container = await service.create_container(container_create)
     return container
 
 

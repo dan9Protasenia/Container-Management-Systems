@@ -1,11 +1,14 @@
 from typing import Dict, Optional
+
 from pydantic import Field
+
 from src.app.core.schemas.base import CommonBaseModel
 
 
 class ContainerBase(CommonBaseModel):
     image: str
     command: Optional[str] = None
+    labels: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class ContainerCreate(ContainerBase):
@@ -14,10 +17,8 @@ class ContainerCreate(ContainerBase):
 
 class Container(ContainerBase):
     id: str
-    image: str
     status: str
     url: str
-    labels: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class ServiceScale(CommonBaseModel):
@@ -37,7 +38,3 @@ class ContainerLog(CommonBaseModel):
 class ScaleRequest(CommonBaseModel):
     container_id: str
     scale_target: int
-
-
-class ScaleContainerRequest(CommonBaseModel):
-    image: str

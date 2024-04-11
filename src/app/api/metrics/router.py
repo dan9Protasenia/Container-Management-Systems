@@ -1,6 +1,8 @@
-from starlette import status
+from typing import Any, Dict
+
 from fastapi import APIRouter, Path
-from typing import Dict, Any
+from starlette import status
+
 from src.app.api.metrics.views import get_container_metrics
 
 router = APIRouter()
