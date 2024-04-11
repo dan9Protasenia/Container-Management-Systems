@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
+
 from src.app.api.container.service import start_health_check_loop
 
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
