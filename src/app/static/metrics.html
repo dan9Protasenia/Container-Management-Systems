@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Metrics Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card {
+            border: none;
+            border-radius: 15px;
+        }
+        .card-title {
+            font-size: 2rem;
+        }
+        .card-subtitle {
+            font-size: 1rem;
+        }
+        .card-text {
+            font-size: 1rem;
+        }
+        .card-body-icon {
+            position: absolute;
+            z-index: 0;
+            top: -25px;
+            right: 20px;
+            opacity: 0.4;
+            font-size: 5rem;
+            transform: rotate(15deg);
+        }
+        .card-outline-primary {
+            border-color: #007bff;
+        }
+        .card-outline-primary .card-body-icon {
+            color: #007bff;
+        }
+        .card-outline-secondary {
+            border-color: #6c757d;
+        }
+        .card-outline-secondary .card-body-icon {
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-5">
+    <h1 class="text-center mb-4">Container Metrics Dashboard</h1>
+    <div class="row" id="metricsContainer">
+    </div>
+</div>
+
+<script>
+    const queryParams = new URLSearchParams(window.location.search);
+    const containerId = queryParams.get('container_id');
+
+    async function loadMetrics(containerId) {
+        try {
+            const response = await fetch(`/containers/${containerId}/metrics`);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const metrics = await response.json();
+
+            const metricsContainer = document.getElementById('metricsContainer');
+            metricsContainer.innerHTML = `
+                <div class="col-md-6 col-lg-3 mb-4">
+                    <div class="card card-outline-primary">
+                        <div class="card-body">
+                            <div class="card-body-icon">
+                                <i class="fas fa-microchip"></i>
+                            </div>
+                            <h5 class="card-title">CPU Usage</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">${metrics.cpu_usage} </h6>
+                            <p class="card-text">CPU Percentage: ${metrics.cpu_percentage}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-4">
+                    <div class="card card-outline-secondary">
+                        <div class="card-body">
+                            <div class="card-body-icon">
+                                <i class="fas fa-memory"></i>
+                            </div>
+                            <h5 class="card-title">Memory Usage</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">${metrics.memory_usage}</h6>
+                            <p class="card-text">Memory Percentage: ${metrics.memory_percentage}</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-6 col-lg-3 mb-4">
+                    <div class="card card-outline-success">
+                        <div class="card-body">
+                            <div class="card-body-icon">
+                                <i class="fas fa-network-wired"></i>
+                            </div>
+                            <h5 class="card-title">Network Traffic</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">RX: ${metrics.network_rx} MB, TX: ${metrics.network_tx} MB</h6>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-4">
+                    <div class="card card-outline-warning">
+                        <div class="card-body">
+                            <div class="card-body-icon">
+                                <i class="fas fa-hdd"></i>
+                            </div>
+                            <h5 class="card-title">Block I/O</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">Read: ${metrics.block_read} MB, Write: ${metrics.block_write} MB</h6>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-4">
+                    <div class="card card-outline-info">
+                        <div class="card-body">
+                            <div class="card-body-icon">
+                                <i class="fas fa-list-ol"></i>
+                            </div>
+                            <h5 class="card-title">Processes</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">Count: ${metrics.num_procs}</h6>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('Failed to load metrics:', error);
+            document.getElementById('metricsContainer').innerText = 'Error loading metrics';
+        }
+    }
+
+    if (containerId) {
+        loadMetrics(containerId);
+    } else {
+        console.error("Container ID is not provided.");
+        document.getElementById('metricsContainer').innerText = 'Container ID not provided';
+    }
+</script>
+
+</body>
+</html>
