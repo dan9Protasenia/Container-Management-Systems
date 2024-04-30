@@ -19,19 +19,23 @@ scale_service = ScaleService()
 
 class LoadBalancer:
     def __init__(self):
+        # Инициализация без создания задач
+        pass
 
+    def start(self):
+        # Запуск потока для обработки событий Docker
         thread = Thread(target=self.handle_docker_events, daemon=True)
         thread.start()
-
+        # Создание асинхронных задач в активном цикле событий
         asyncio.create_task(self.check_and_scale())
 
     @staticmethod
     async def handle_docker_events():
+        # Асинхронный метод для обработки событий Docker
         for event in client.events(decode=True):
             if event.get("Type") == "container":
                 print(f"Обработка события: {event}")
                 container_service.update_containers_list()
-
     @staticmethod
     async def get_least_loaded_container():
         least_loaded = None
@@ -77,7 +81,7 @@ class LoadBalancer:
 
             if average_cpu_load > 57:
                 create_data = ContainerCreate(
-                    image="app1:latest", command="", labels={"scale-purpose": "scale-up"}, env={}
+                    image="app:latest", command="", labels={"scale-purpose": "scale-up"}, env={}
                 )
                 await scale_service.scale_up(create_data)
 
@@ -118,7 +122,7 @@ class LoadBalancer:
                 return None
 
             cpu_delta = (
-                stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+                    stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
             )
 
             system_cpu_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
