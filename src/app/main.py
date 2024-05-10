@@ -1,5 +1,6 @@
 import os
 
+import docker
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -11,13 +12,17 @@ load_dotenv(dotenv_path=dotenv_path)
 
 from src.app.startup import create_app
 
+client = docker.from_env()
 app = create_app()
 Instrumentator().instrument(app).expose(app)
-load_balancer = LoadBalancer()
+load_balancer = LoadBalancer(client)
+
 
 @app.on_event("startup")
 async def startup_event():
     load_balancer.start()
+
+
 if __name__ == "__main__":
     import uvicorn
 
