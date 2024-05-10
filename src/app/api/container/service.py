@@ -13,60 +13,34 @@ from src.app.core.schemas.container import Container
 from src.app.core.schemas.container import Container as ContainerSchema
 from src.app.core.schemas.container import ContainerCreate, ContainerLog, LogEntry
 
-client = docker.from_env()
-
 
 class ContainerService:
 
-    def __init__(self):
+    def __init__(self, client):
+        self.client = client
+        self.container_info_service = ContainerInfoService(client)
         self.containers = []
         self.initial_containers_count = len(self.containers)
         self.container_cycle = itertools.cycle(self.containers)
         self.update_containers_list()
 
     def update_containers_list(self):
-        self.containers = self.list_active_containers()
+        self.containers = self.container_info_service.list_active_containers()
         self.container_cycle = itertools.cycle(self.containers)
 
-    @staticmethod
-    def list_all_containers() -> list[ContainerSchema]:
-        containers = client.containers.list(all=True)
-        containers_data = []
-
-        for container in containers:
-            ports = container.attrs["NetworkSettings"]["Ports"]
-            url = "http://localhost"
-            labels = container.labels
-            for port, port_data in ports.items():
-                if port_data:
-                    host_port = port_data[0]["HostPort"]
-                    url = f"http://localhost:{host_port}"
-
-            container_data = ContainerSchema(
-                id=container.id,
-                image=container.image.tags[0] if container.image.tags else "unknown",
-                status=container.status,
-                url=url,
-                labels=labels,
-            )
-            containers_data.append(container_data)
-
-        return containers_data
-
-    @staticmethod
-    async def create_container(container_data: ContainerCreate) -> Container:
+    async def create_container(self, container_data: ContainerCreate) -> Container:
         try:
             container_data.image = await asyncio.get_running_loop().run_in_executor(
                 None,
                 lambda: (
-                    client.images.get(container_data.image)
-                    if client.images.list(container_data.image)
-                    else client.images.pull(container_data.image)
+                    self.client.images.get(container_data.image)
+                    if self.client.images.list(container_data.image)
+                    else self.client.images.pull(container_data.image)
                 ),
             )
             container = await asyncio.get_running_loop().run_in_executor(
                 None,
-                lambda: client.containers.create(
+                lambda: self.client.containers.create(
                     image=container_data.image.tags[0],
                     command=container_data.command,
                     labels=container_data.labels,
@@ -90,32 +64,9 @@ class ContainerService:
         except APIError as e:
             print(f"Failed to create container: {e}")
 
-    @staticmethod
-    def list_active_containers():
-        docker_containers = client.containers.list(filters={"status": "running"})
-        containers = []
-
-        for docker_container in docker_containers:
-            port_data = docker_container.attrs["NetworkSettings"]["Ports"].get("80/tcp")
-            url = f"http://localhost:{port_data[0]['HostPort']}" if port_data else "http://localhost"
-            labels = docker_container.labels
-
-            containers.append(
-                Container(
-                    id=docker_container.id,
-                    image=docker_container.image.tags[0] if docker_container.image.tags else "unknown",
-                    status=docker_container.status,
-                    url=url,
-                    labels=labels,
-                )
-            )
-
-        return containers
-
-    @staticmethod
-    def delete_container(container_id: str):
+    def delete_container(self, container_id: str):
         try:
-            container = client.containers.get(container_id)
+            container = self.client.containers.get(container_id)
             container.remove(force=True)
 
         except NotFound:
@@ -124,10 +75,9 @@ class ContainerService:
         except APIError as e:
             raise DockerInternalError(f"Failed to delete container {container_id}: {e.explanation}")
 
-    @staticmethod
-    def start_container(container_id: str):
+    def start_container(self, container_id: str):
         try:
-            container = client.containers.get(container_id)
+            container = self.client.containers.get(container_id)
             container.start()
 
         except NotFound:
@@ -136,10 +86,9 @@ class ContainerService:
         except APIError as e:
             raise DockerInternalError(f"Failed to start container {container_id}: {e.explanation}")
 
-    @staticmethod
-    def stop_container(container_id: str):
+    def stop_container(self, container_id: str):
         try:
-            container = client.containers.get(container_id)
+            container = self.client.containers.get(container_id)
             container.stop()
 
         except NotFound:
@@ -148,10 +97,39 @@ class ContainerService:
         except APIError as e:
             raise DockerInternalError(f"Failed to stop container {container_id}: {e.explanation}")
 
-    @staticmethod
-    def get_container_logs(container_id: str) -> ContainerLog:
+
+class ContainerInfoService:
+    def __init__(self, client):
+        self.client = client
+        self.restart_attempts = {}
+
+    def list_all_containers(self) -> list[ContainerSchema]:
+        containers = self.client.containers.list(all=True)
+        containers_data = []
+
+        for container in containers:
+            ports = container.attrs["NetworkSettings"]["Ports"]
+            url = "http://localhost"
+            labels = container.labels
+            for port, port_data in ports.items():
+                if port_data:
+                    host_port = port_data[0]["HostPort"]
+                    url = f"http://localhost:{host_port}"
+
+            container_data = ContainerSchema(
+                id=container.id,
+                image=container.image.tags[0] if container.image.tags else "unknown",
+                status=container.status,
+                url=url,
+                labels=labels,
+            )
+            containers_data.append(container_data)
+
+        return containers_data
+
+    def get_container_logs(self, container_id: str) -> ContainerLog:
         try:
-            container = client.containers.get(container_id)
+            container = self.client.containers.get(container_id)
             raw_logs = container.logs().decode("utf-8")
 
             if not raw_logs:
@@ -173,61 +151,87 @@ class ContainerService:
         except APIError as e:
             raise DockerInternalError(f"Failed to get logs for container {container_id}: {e.explanation}")
 
-    @staticmethod
-    def get_containers_count() -> int:
-        containers = client.containers.list(all=True)
+    def get_containers_count(self) -> int:
+        containers = self.client.containers.list(all=True)
 
         return len(containers)
 
-    @staticmethod
-    def get_containers_count_by_image(image_name: str):
-        containers = client.containers.list(all=True)
+    def get_containers_count_by_image(self, image_name: str):
+        containers = self.client.containers.list(all=True)
         filtered_containers = [c for c in containers if c.attrs["Config"]["Image"] == image_name]
 
         return len(filtered_containers)
 
-    @staticmethod
-    def get_containers_by_image(image_name: str):
-        containers = client.containers.list(all=True)
+    def list_active_containers(self):
+        docker_containers = self.client.containers.list(filters={"status": "running"})
+        containers = []
+
+        for docker_container in docker_containers:
+            port_data = docker_container.attrs["NetworkSettings"]["Ports"].get("80/tcp")
+            url = f"http://localhost:{port_data[0]['HostPort']}" if port_data else "http://localhost"
+            labels = docker_container.labels
+
+            containers.append(
+                Container(
+                    id=docker_container.id,
+                    image=docker_container.image.tags[0] if docker_container.image.tags else "unknown",
+                    status=docker_container.status,
+                    url=url,
+                    labels=labels,
+                )
+            )
+
+        return containers
+
+    def get_containers_by_image(self, image_name: str):
+        containers = self.client.containers.list(all=True)
 
         return [c for c in containers if c.attrs["Config"]["Image"] == image_name]
 
-    @staticmethod
-    def restart_failed_containers():
+    def restart_failed_containers(self):
         while True:
-            containers = client.containers.list(all=True)
+            containers = self.client.containers.list(all=True)
             for container in containers:
                 try:
                     container.reload()
                     state = container.attrs["State"]
                     status = state["Status"]
                     exit_code = state.get("ExitCode", 0)
+                    container_id = container.id
+
                     created_at = datetime.datetime.strptime(
                         container.attrs["Created"][:-4], "%Y-%m-%dT%H:%M:%S.%f"
                     ).replace(tzinfo=datetime.timezone.utc)
 
                     if (datetime.datetime.now(datetime.timezone.utc) - created_at).total_seconds() < 500:  # 5 минут
-                        print(f"Контейнер {container.id} был недавно создан, пропускаем...")
+                        print(f"Контейнер {container_id} был недавно создан, пропускаем...")
                         continue
 
-                    print(f"Контейнер {container.id} в состояни его код {exit_code}")
                     if status == "exited" and exit_code != 0:
-                        print(f"Контейнер {container.id} завершился с ошибкой, перезапускаем...")
+                        if self.restart_attempts.get(container_id, 0) >= 3:
+                            print(
+                                f"Контейнер {container_id} достиг лимита перезапусков и требует ручного вмешательства.")
+                            continue
+
+                        print(f"Контейнер {container_id} завершился с ошибкой, перезапускаем...")
                         container.restart()
-                        print(f"Контейнер {container.id} успешно перезапущен.")
+                        self.restart_attempts[container_id] = self.restart_attempts.get(container_id, 0) + 1
+                        print(f"Контейнер {container_id} успешно перезапущен.")
                     else:
-                        print(f"Контейнер {container.id} в состоянии {status}, пропускаем.")
+                        print(f"Контейнер {container_id} в состоянии {status}, пропускаем.")
                         print(f"код ошибки контейнера {exit_code}")
                 except APIError as e:
-                    print(f"Ошибка при обработке контейнера {container.id}: {e.explanation}")
+                    print(f"Ошибка при обработке контейнера {container_id}: {e.explanation}")
                 except Exception as e:
-                    print(f"Неожиданная ошибка при обработке контейнера {container.id}: {str(e)}")
+                    print(f"Неожиданная ошибка при обработке контейнера {container_id}: {str(e)}")
             time.sleep(60)
 
 
 def start_health_check_loop():
+    client = docker.from_env()
     print("Стартовка цикла проверки состояния контей")
-    health_check_thread = threading.Thread(target=ContainerService.restart_failed_containers, daemon=True)
+    container_info_service = ContainerInfoService(client)
+    health_check_thread = threading.Thread(target=container_info_service.restart_failed_containers, daemon=True)
     health_check_thread.start()
 
 

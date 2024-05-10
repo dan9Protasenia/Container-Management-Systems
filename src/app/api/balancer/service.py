@@ -2,46 +2,39 @@ import asyncio
 import json
 from threading import Thread
 
-import docker
 import httpx
 
-from src.app.api.container.service import ContainerService
+from src.app.api.container.service import ContainerService, ContainerInfoService
 from src.app.api.metrics.service import MetricsService
 from src.app.api.metrics.views import get_container_metrics
 from src.app.api.scale.service import ScaleService
 from src.app.core.schemas.container import ContainerCreate
 
-container_service = ContainerService()
-client = docker.from_env()
-metrics_service = MetricsService()
-scale_service = ScaleService()
-
 
 class LoadBalancer:
-    def __init__(self):
-        # Инициализация без создания задач
-        pass
+    def __init__(self, client):
+        self.client = client
+        self.scale_service = ScaleService(client)
+        self.metrics_service = MetricsService(client)
+        self.container_service = ContainerService(client)
+        self.container_info_service = ContainerInfoService(client)
 
     def start(self):
-        # Запуск потока для обработки событий Docker
         thread = Thread(target=self.handle_docker_events, daemon=True)
         thread.start()
-        # Создание асинхронных задач в активном цикле событий
         asyncio.create_task(self.check_and_scale())
 
-    @staticmethod
-    async def handle_docker_events():
-        # Асинхронный метод для обработки событий Docker
-        for event in client.events(decode=True):
+    async def handle_docker_events(self):
+        for event in self.client.events(decode=True):
             if event.get("Type") == "container":
                 print(f"Обработка события: {event}")
-                container_service.update_containers_list()
-    @staticmethod
-    async def get_least_loaded_container():
+                self.container_service.update_containers_list()
+
+    async def get_least_loaded_container(self):
         least_loaded = None
         lowest_cpu_usage = "inf"
 
-        for container in container_service.containers:
+        for container in self.container_service.containers:
             metrics = await get_container_metrics(container.id)
             cpu_usage = metrics["cpu_usage"].rstrip("%")
 
@@ -75,6 +68,7 @@ class LoadBalancer:
             return {"error": "Ошибка при запросе к контейнеру"}
 
     async def check_and_scale(self):
+        print("Checking and scaling")
         while True:
             average_cpu_load = await self.get_average_cpu_load()
             print(f"Средняя загрузка процессора: {average_cpu_load}")
@@ -83,16 +77,16 @@ class LoadBalancer:
                 create_data = ContainerCreate(
                     image="app:latest", command="", labels={"scale-purpose": "scale-up"}, env={}
                 )
-                await scale_service.scale_up(create_data)
+                await self.scale_service.scale_up(create_data)
 
             elif average_cpu_load < 30:
-                await scale_service.scale_down()
+                await self.scale_service.scale_down()
 
             await asyncio.sleep(10)
 
     async def get_average_cpu_load(self):
         total_cpu_load = 0
-        active_containers = [container.id for container in container_service.list_active_containers()]
+        active_containers = [container.id for container in self.container_info_service.list_active_containers()]
 
         if not active_containers:
             return 0
@@ -112,10 +106,9 @@ class LoadBalancer:
 
         return average_cpu_load
 
-    @staticmethod
-    async def get_cpu_load(container_id):
+    async def get_cpu_load(self, container_id):
         try:
-            container = client.containers.get(container_id)
+            container = self.client.containers.get(container_id)
             stats = container.stats(stream=False)
 
             if not stats:

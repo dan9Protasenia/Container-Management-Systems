@@ -1,15 +1,13 @@
 from typing import Any, Dict
 
-import docker
-
-client = docker.from_env()
-
 
 class MetricsService:
-    @staticmethod
-    def get_container_stats(container_id: str) -> Dict[str, Any]:
+    def __init__(self, client):
+        self.client = client
+
+    def get_container_stats(self, container_id: str) -> Dict[str, Any]:
         print(f"Получение статистики для ID контейнера: {container_id}")
-        container = client.containers.get(container_id)
+        container = self.client.containers.get(container_id)
         stats = container.stats(stream=False)
 
         return dict(stats)
