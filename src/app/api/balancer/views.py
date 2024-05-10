@@ -1,6 +1,9 @@
+import docker
+
 from src.app.api.balancer.service import LoadBalancer
 
-load_service = LoadBalancer()
+client = docker.from_env()
+load_service = LoadBalancer(client)
 
 
 async def proxy_request(path: str):
